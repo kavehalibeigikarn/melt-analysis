@@ -1,5 +1,5 @@
 // کش آفلاین؛ با هر تغییر در فایل‌ها عدد نسخه را بالا ببرید
-const CACHE = 'melt-analysis-v2';
+const CACHE = 'melt-analysis-v3';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png',
   'fonts/Vazirmatn-Regular.woff2', 'fonts/Vazirmatn-Medium.woff2', 'fonts/Vazirmatn-Bold.woff2', 'fonts/Vazirmatn-ExtraBold.woff2', 'fonts/Vazirmatn-Black.woff2'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });

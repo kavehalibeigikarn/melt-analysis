@@ -170,6 +170,15 @@ h2:first-child{margin-top:4px}
 .other input{width:90px;border:2px solid var(--line);border-radius:10px;padding:8px;background:var(--surface);font-size:18px;font-weight:700;text-align:center}
 .sheet .row{display:grid;grid-template-columns:2fr 1fr;gap:10px}
 .sheet .row .btn{margin-top:14px}
+.when-line{display:flex;justify-content:space-between;align-items:center;background:var(--surface);border-radius:12px;padding:8px 14px;margin:12px 0 0;font-size:14px;color:var(--muted)}
+.when-line b{color:var(--ink);font-size:16px;font-weight:800}
+.need{font-size:14px;color:var(--danger);text-align:center;margin:8px 0 0;min-height:22px;font-weight:700}
+.saved{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;margin:0 0 4px}
+.saved .ok-tick{color:var(--ok);font-weight:800}
+.saved .link{color:var(--danger);font-weight:500;font-size:13px}
+.result.flash{animation:flash .6s ease-out}
+@keyframes flash{from{transform:scale(.97);opacity:.4}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.result.flash{animation:none}}
 .chip{display:inline-block;background:var(--brass-soft);color:var(--brass);font-weight:800;font-size:14px;border-radius:8px;padding:1px 10px}
 .toast{position:fixed;left:50%;transform:translate(-50%,20px);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--bar);color:var(--bar-ink);padding:10px 18px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:30}
 .toast.show{opacity:1;transform:translate(-50%,0)}
@@ -194,19 +203,6 @@ h2:first-child{margin-top:4px}
     <button data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>تنظیمات</button>
   </div>
 </nav>
-<div class="sheet-bg" id="sheetBg">
-  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
-    <h3 id="sheetTitle">ثبت محاسبه</h3>
-    <div class="sum" id="sheetSum"></div>
-    <div class="when" id="sheetWhen"></div>
-    <p class="q">این آنالیز مربوط به کدام ذوب است؟</p>
-    <div class="melts" id="melts"></div>
-    <div class="other"><span>شماره دیگر:</span><input id="meltOther" inputmode="numeric" autocomplete="off"><span id="meltHint" style="color:var(--muted);font-size:13px"></span></div>
-    <label class="field small" style="margin-top:10px"><span class="lbl"><span>توضیح</span><span>اختیاری</span></span>
-      <input id="sheetNote" autocomplete="off" style="direction:rtl;text-align:right"></label>
-    <div class="row"><button class="btn" id="sheetOk" disabled>ثبت</button><button class="btn ghost" id="sheetCancel">انصراف</button></div>
-  </div>
-</div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -332,24 +328,29 @@ function renderTabs(){
   ).join('') + `<button class="tab add" id="addTab" aria-label="افزودن سربرگ">+</button>`;
 }
 
-function draft(){ return S.draft[S.active] || (S.draft[S.active] = {shahed:'', melt:'', heat:''}); }
+function draft(){ return S.draft[S.active] || (S.draft[S.active] = {shahed:'', melt:'', meltNo:0, note:''}); }
 
-function resultHtml(p, d){
-  const sh = parseNum(d.shahed), me = parseNum(d.melt);
-  const valid = isFinite(sh) && isFinite(me) && sh > 0 && me > 0 && sh <= 100 && me <= 100;
-  if (!valid) return `<div class="result" id="result"><p class="r-head">نتیجه</p><p class="r-empty">نمونه شاهد و نمونه ذوب را وارد کنید تا مقدار افزودنی نمایش داده شود.</p></div>`;
-  const r = calc(p, sh, me);
-  const head = r.metal === 'ok' ? 'ذوب در حد استاندارد است' : 'به ذوب اضافه کنید';
-  const main = r.metal === 'ok'
+function resultHtml(rec){
+  if (!rec) return `<div class="result" id="result"><p class="r-head">نتیجه</p><p class="r-empty">اعداد و شماره ذوب را وارد کنید و «محاسبه و ثبت» را بزنید. نتیجه همین‌جا نمایش داده می‌شود و خودکار در سوابق ثبت می‌شود.</p></div>`;
+  const head = rec.metal === 'ok' ? 'ذوب در حد استاندارد است' : 'به ذوب اضافه کنید';
+  const main = rec.metal === 'ok'
     ? `<div class="r-main"><span class="r-metal">نیازی به افزودن نیست</span></div>`
-    : `<div class="r-main"><span class="r-amount">${fmt(r.amount)}</span><span class="r-unit">${esc(p.unit)}</span><span class="r-metal">${METAL[r.metal]}</span></div>`;
-  return `<div class="result ${r.metal}" id="result">
+    : `<div class="r-main"><span class="r-amount">${fmt(rec.amount)}</span><span class="r-unit">${esc(rec.unit)}</span><span class="r-metal">${METAL[rec.metal]}</span></div>`;
+  return `<div class="result ${rec.metal}${S.flash ? ' flash' : ''}" id="result">
+    <div class="saved"><span class="ok-tick">✓ ثبت شد: <span class="chip">ذوب ${ordinal(rec.meltNo)}</span> ساعت ${esc(timeFmt.format(new Date(rec.ts)))}</span>
+      <button class="link" data-undo="${esc(rec.id)}">حذف این ثبت</button></div>
     <p class="r-head">${head}</p>${main}
     <div class="steps">
-      <div><span>خطای دستگاه (شاهد − رازی)</span><b>${fmtSigned(r.err)}</b></div>
-      <div><span>مس واقعی ذوب (ذوب − خطا)</span><b>${fmt(r.corrected,3)}٪</b></div>
-      <div><span>اختلاف با استاندارد (${fmt(p.standard,3)}٪)</span><b>${fmtSigned(r.dev)}٪</b></div>
+      <div><span>نمونه شاهد</span><b>${fmt(rec.shahed,3)}٪</b></div>
+      <div><span>نمونه ذوب</span><b>${fmt(rec.melt,3)}٪</b></div>
+      <div><span>خطای دستگاه (شاهد − رازی)</span><b>${fmtSigned(rec.err)}</b></div>
+      <div><span>مس واقعی ذوب (ذوب − خطا)</span><b>${fmt(rec.melt - rec.err,3)}٪</b></div>
+      <div><span>اختلاف با استاندارد (${fmt(rec.standard,3)}٪)</span><b>${fmtSigned(rec.dev)}٪</b></div>
     </div></div>`;
+}
+function lastShown(){
+  const id = S.last[S.active];
+  return id ? S.records.find(r => r.id === id) || null : null;
 }
 
 function viewCalc(){
@@ -370,8 +371,15 @@ function viewCalc(){
   <label class="field" id="f-melt"><span class="lbl"><span>نمونه ذوب</span><span>درصد مس</span></span>
     <input id="in-melt" inputmode="decimal" autocomplete="off" placeholder="0.0" value="${esc(d.melt)}"></label>
 
-  <div id="resultWrap">${resultHtml(p, d)}</div>
-  <button class="btn" id="saveCalc">ثبت محاسبه</button>`;
+  <p class="q" style="margin-top:6px">این آنالیز مربوط به کدام ذوب است؟</p>
+  <div class="melts" id="melts">${meltsHtml()}</div>
+  <div class="other"><span>شماره دیگر:</span><input id="meltOther" inputmode="numeric" autocomplete="off" value="${d.meltNo > 15 ? esc(d.meltNo) : ''}"><span id="meltHint" style="color:var(--muted);font-size:13px">ذوب بعدیِ امروز: ${ordinal(suggestedMelt())}</span></div>
+  <label class="field small" style="margin-top:10px"><span class="lbl"><span>توضیح</span><span>اختیاری</span></span>
+    <input id="in-note" autocomplete="off" style="direction:rtl;text-align:right" value="${esc(d.note)}"></label>
+  <div class="when-line" id="whenLine"></div>
+  <button class="btn" id="saveCalc">محاسبه و ثبت</button>
+  <p class="need" id="need"></p>
+  <div id="resultWrap">${resultHtml(lastShown())}</div>`;
 }
 
 function recHtml(r){
@@ -433,95 +441,77 @@ function viewSettings(){
 
 function render(fromSync){
   // avoid wiping what the user is typing when a sync arrives
-  if (fromSync && S.view === 'settings' && $main.contains(document.activeElement)) { renderTabs(); return; }
-  if (fromSync && S.view === 'calc' && $main.contains(document.activeElement)) { renderTabs(); refreshResult(); return; }
+  if (fromSync && S.view !== 'history' && $main.contains(document.activeElement)) { renderTabs(); return; }
   renderTabs();
   $main.innerHTML = S.view === 'calc' ? viewCalc() : S.view === 'history' ? viewHistory() : viewSettings();
   document.querySelectorAll('.nav button').forEach(b => { if (b.dataset.view === S.view) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); });
-  updateSaveBtn();
+  S.flash = false;
+  paintClock(); updateSaveBtn();
 }
-function refreshResult(){
-  const w = document.getElementById('resultWrap');
-  if (w) w.innerHTML = resultHtml(prof(), draft());
-  updateSaveBtn();
+function inputsValid(){
+  const d = draft(), sh = parseNum(d.shahed), me = parseNum(d.melt);
+  return isFinite(sh) && isFinite(me) && sh > 0 && me > 0 && sh <= 100 && me <= 100;
 }
 function updateSaveBtn(){
   const b = document.getElementById('saveCalc'); if (!b) return;
-  const d = draft(), sh = parseNum(d.shahed), me = parseNum(d.melt);
-  b.disabled = !(isFinite(sh) && isFinite(me) && sh > 0 && me > 0 && sh <= 100 && me <= 100);
+  const d = draft(), okIn = inputsValid(), okMelt = d.meltNo > 0;
+  b.disabled = !(okIn && okMelt);
+  const need = document.getElementById('need');
+  const sh = parseNum(d.shahed), me = parseNum(d.melt);
+  const typedMelt = String(d.melt || '').trim() !== '';
+  let msg = '';
+  if (!okIn && (typedMelt || okMelt)) msg = (isFinite(sh) && sh > 100) || (isFinite(me) && me > 100) ? 'عدد باید بین ۰ تا ۱۰۰ باشد' : 'نمونه شاهد و نمونه ذوب را کامل وارد کنید';
+  else if (okIn && !okMelt) msg = 'شماره ذوب را انتخاب کنید';
+  if (need) need.textContent = msg;
+}
+function clearResult(){
+  if (!S.last[S.active]) return;
+  delete S.last[S.active];
+  const w = document.getElementById('resultWrap'); if (w) w.innerHTML = resultHtml(null);
 }
 
 /* ---------- actions ---------- */
-/* save sheet: asks which melt this analysis belongs to; date/time is taken automatically */
-const $sheetBg = document.getElementById('sheetBg');
-let sheetSel = 0, sheetClock = null;
+/* melt number is chosen BEFORE calculating; one button calculates and saves */
+S.last = {}; S.flash = false;
 const sameDay = (a, b) => dayFmt.format(new Date(a)) === dayFmt.format(new Date(b));
 function suggestedMelt(){
   const now = Date.now();
   const today = S.records.filter(r => r.pid === S.active && r.meltNo && sameDay(r.ts, now));
   return today.length ? Math.max(...today.map(r => r.meltNo)) + 1 : 1;
 }
-function paintClock(){
-  const el = document.getElementById('sheetWhen'); if (!el) return;
-  const now = new Date();
-  el.innerHTML = `<span>${esc(dayFmt.format(now))}</span><b>ساعت ${esc(timeFmt.format(now))}</b>`;
-}
-function paintMelts(){
-  const next = suggestedMelt();
-  const n = Math.max(10, next);
+function meltsHtml(){
+  const sel = draft().meltNo || 0, next = suggestedMelt();
   let html = '';
-  for (let i = 1; i <= Math.min(n, 15); i++)
-    html += `<button type="button" data-melt="${i}" aria-pressed="${sheetSel === i}" class="${i === next ? 'next' : ''}">${fmt(i)}<small>${ORD[i]}</small></button>`;
-  document.getElementById('melts').innerHTML = html;
-  document.getElementById('sheetOk').disabled = !(sheetSel > 0);
-  document.getElementById('meltHint').textContent = 'ذوب بعدیِ امروز: ' + ordinal(next);
+  for (let i = 1; i <= Math.min(Math.max(10, next), 15); i++)
+    html += `<button type="button" data-melt="${i}" aria-pressed="${sel === i}" class="${i === next ? 'next' : ''}">${fmt(i)}<small>${ORD[i]}</small></button>`;
+  return html;
 }
-function openSheet(){
-  const p = prof(), d = draft();
-  const sh = parseNum(d.shahed), me = parseNum(d.melt);
-  if (!(sh > 0 && me > 0 && sh <= 100 && me <= 100)) return;
-  const r = calc(p, sh, me);
-  const sum = document.getElementById('sheetSum');
-  sum.className = 'sum ' + r.metal;
-  sum.innerHTML = (r.metal === 'ok' ? 'در حد استاندارد' : `${fmt(r.amount)} ${esc(p.unit)} ${METAL[r.metal]}`)
-    + `<span>${esc(p.name)} ${esc(p.alloy)} ، شاهد ${fmt(sh,3)} ، ذوب ${fmt(me,3)}</span>`;
-  sheetSel = 0;
-  document.getElementById('meltOther').value = '';
-  document.getElementById('sheetNote').value = '';
-  paintClock(); paintMelts();
-  clearInterval(sheetClock); sheetClock = setInterval(paintClock, 15000);
-  $sheetBg.classList.add('open');
-  document.body.style.overflow = 'hidden';
+function paintMelts(){ const m = document.getElementById('melts'); if (m) m.innerHTML = meltsHtml(); updateSaveBtn(); }
+function paintClock(){
+  const el = document.getElementById('whenLine'); if (!el) return;
+  const now = new Date();
+  el.innerHTML = `<span>زمان ثبت: ${esc(dayFmt.format(now))}</span><b>ساعت ${esc(timeFmt.format(now))}</b>`;
 }
-function closeSheet(){
-  $sheetBg.classList.remove('open'); clearInterval(sheetClock); document.body.style.overflow = '';
-}
-$sheetBg.addEventListener('click', e => {
-  if (e.target === $sheetBg || e.target.closest('#sheetCancel')) { closeSheet(); return; }
-  const b = e.target.closest('[data-melt]');
-  if (b){ sheetSel = Number(b.dataset.melt); document.getElementById('meltOther').value = ''; paintMelts(); return; }
-  if (e.target.closest('#sheetOk')) confirmSave();
-});
-document.getElementById('meltOther').addEventListener('input', e => {
-  const v = Math.floor(parseNum(e.target.value));
-  sheetSel = v > 0 && v < 1000 ? v : 0; paintMelts();
-});
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && $sheetBg.classList.contains('open')) closeSheet(); });
+setInterval(paintClock, 15000);
 
-async function confirmSave(){
-  if (!(sheetSel > 0)) return;
+async function calcAndSave(){
   const p = prof(), d = draft();
+  if (!inputsValid() || !(d.meltNo > 0)) { updateSaveBtn(); return; }
   const sh = parseNum(d.shahed), me = parseNum(d.melt);
-  if (!(sh > 0 && me > 0 && sh <= 100 && me <= 100)) { closeSheet(); return; }
   const r = calc(p, sh, me);
-  const rec = { id: uid(), pid: p.id, ts: Date.now(), meltNo: sheetSel, note: document.getElementById('sheetNote').value.trim(),
+  const rec = { id: uid(), pid: p.id, ts: Date.now(), meltNo: d.meltNo, note: (d.note || '').trim(),
     shahed: sh, melt: me,
     razi: p.razi, standard: p.standard, cuFactor: p.cuFactor, znFactor: p.znFactor, unit: p.unit,
     err: r.err, dev: r.dev, amount: r.amount, metal: r.metal };
   S.records.unshift(rec);
-  d.melt = '';                              // نمونه شاهد برای ذوب بعدی باقی می‌ماند
+  S.last[p.id] = rec.id; S.flash = true;
+  d.melt = ''; d.meltNo = 0; d.note = '';   // نمونه شاهد برای ذوب بعدی باقی می‌ماند
   LS.set('meltcalc.draft', S.draft); saveLocal();
-  closeSheet(); render(); toast('ذوب ' + ordinal(rec.meltNo) + ' ثبت شد');
+  if (document.activeElement) document.activeElement.blur();
+  render();
+  const res = document.getElementById('result');
+  if (res) res.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  toast('ذوب ' + ordinal(rec.meltNo) + ' ثبت شد');
   await dbWrite(db => db.collection('records').doc(rec.id).set(rec));
 }
 
@@ -565,6 +555,17 @@ async function deleteProfile(){
   saveLocal(); render(); toast('سربرگ حذف شد');
   await dbWrite(db => db.collection('profiles').doc(p.id).delete());
   for (const r of recs) await dbWrite(db => db.collection('records').doc(r.id).delete());
+}
+
+async function undoLast(id){
+  const rec = S.records.find(r => r.id === id); if (!rec) return;
+  if (!confirm('ثبت ذوب ' + ordinal(rec.meltNo) + ' حذف شود؟ اعداد به فرم برمی‌گردند تا اصلاح کنید.')) return;
+  const d = draft();
+  d.shahed = String(rec.shahed); d.melt = String(rec.melt); d.meltNo = rec.meltNo; d.note = rec.note || '';
+  S.records = S.records.filter(r => r.id !== id);
+  delete S.last[S.active];
+  LS.set('meltcalc.draft', S.draft); saveLocal(); render(); toast('ثبت حذف شد');
+  await dbWrite(db => db.collection('records').doc(id).delete());
 }
 
 async function deleteRecord(id){
@@ -616,7 +617,9 @@ document.querySelector('.nav').addEventListener('click', e => {
 });
 $main.addEventListener('click', e => {
   const t = e.target;
-  if (t.closest('#saveCalc')) openSheet();
+  if (t.closest('#saveCalc')) calcAndSave();
+  else if (t.closest('[data-melt]')) { draft().meltNo = Number(t.closest('[data-melt]').dataset.melt); const o = document.getElementById('meltOther'); if (o) o.value = ''; LS.set('meltcalc.draft', S.draft); paintMelts(); }
+  else if (t.closest('[data-undo]')) undoLast(t.closest('[data-undo]').dataset.undo);
   else if (t.closest('#saveSettings')) saveSettings();
   else if (t.closest('#delProfile')) deleteProfile();
   else if (t.closest('#exportCsv')) exportCsv();
@@ -624,11 +627,17 @@ $main.addEventListener('click', e => {
   else if (t.closest('[data-go]')) { S.view = t.closest('[data-go]').dataset.go; render(); window.scrollTo(0,0); }
 });
 $main.addEventListener('input', e => {
-  const map = { 'in-shahed':'shahed', 'in-melt':'melt' };
+  if (e.target.id === 'meltOther'){
+    const v = Math.floor(parseNum(e.target.value));
+    draft().meltNo = v > 0 && v < 1000 ? v : 0;
+    LS.set('meltcalc.draft', S.draft); paintMelts(); return;
+  }
+  const map = { 'in-shahed':'shahed', 'in-melt':'melt', 'in-note':'note' };
   const k = map[e.target.id]; if (!k) return;
   draft()[k] = e.target.value;
   LS.set('meltcalc.draft', S.draft);
-  refreshResult();
+  if (k !== 'note') clearResult();   // نتیجه قبلی با ورودی جدید اشتباه گرفته نشود
+  updateSaveBtn();
 });
 $main.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
